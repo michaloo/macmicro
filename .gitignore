@@ -1,0 +1,28 @@
+# Swift Package Manager
+.build/
+Package.resolved
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# App build output
+build/
+
+# Debug logs
+log.txt
+
+# Generated iconset (keep .icns, regenerate from source SVG)
+assets/MacMicro.iconset/
+
+# Zip archives
+*.zip
+
+# Claude Code
+.claude/

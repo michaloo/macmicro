@@ -1,0 +1,12 @@
+[{
+    "Name": "macmicro",
+    "Description": "MacMicro native app integration plugin",
+    "Website": "https://github.com/macmicro",
+    "Tags": ["integration"],
+    "Versions": [{
+        "Version": "1.0.0",
+        "Require": {
+            "micro": ">=2.0.0"
+        }
+    }]
+}]
