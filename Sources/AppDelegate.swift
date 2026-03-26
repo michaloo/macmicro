@@ -64,29 +64,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - File Opening
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        let paths = urls.map(\.path).filter { path in
+        var files: [String] = []
+        var dirs: [String] = []
+
+        for url in urls {
             var isDir: ObjCBool = false
-            return !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) || !isDir.boolValue
-        }
-        guard !paths.isEmpty else { return }
-
-        if windowControllers.isEmpty {
-            pendingFiles.append(contentsOf: paths)
-            return
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                dirs.append(url.path)
+            } else {
+                files.append(url.path)
+            }
         }
 
-        // Open files in the focused window
-        if let wc = activeWindowController {
-            for path in paths {
-                wc.openFile(path)
+        // Directories → new window with that CWD
+        for dir in dirs {
+            createWindow(filePaths: [], workingDirectory: dir)
+        }
+
+        // Files → open in focused window or queue for launch
+        if !files.isEmpty {
+            if windowControllers.isEmpty {
+                pendingFiles.append(contentsOf: files)
+            } else if let wc = activeWindowController {
+                for file in files {
+                    wc.openFile(file)
+                }
             }
         }
     }
 
     // MARK: - Window Management
 
-    private func createWindow(filePaths: [String], workingDirectory: String?) {
-        let wc = MicroWindowController(theme: theme, filePaths: filePaths, workingDirectory: workingDirectory)
+    private func createWindow(filePaths: [String], workingDirectory: String? = nil) {
+        // Derive CWD from first file if not explicitly provided
+        let cwd = workingDirectory ?? filePaths.first.map {
+            URL(fileURLWithPath: $0).deletingLastPathComponent().path
+        }
+        let wc = MicroWindowController(theme: theme, filePaths: filePaths, workingDirectory: cwd)
         wc.onClose = { [weak self] controller in
             self?.windowControllers.removeAll { $0 === controller }
         }

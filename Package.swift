@@ -15,9 +15,14 @@ let package = Package(
             name: "MacMicro",
             dependencies: ["SwiftTerm"],
             path: "Sources",
+            exclude: ["CLI"],
             resources: [
                 .copy("Resources")
             ]
+        ),
+        .executableTarget(
+            name: "macmicro-cli",
+            path: "Sources/CLI"
         ),
     ]
 )
