@@ -6,11 +6,16 @@ class MicroWindowController: NSWindowController, NSWindowDelegate, MicroTerminal
     var onClose: ((MicroWindowController) -> Void)?
     var onProcessExited: (() -> Void)?
 
+    private(set) var workingDirectory: String
     private let theme: MicroTheme
     private var terminalView: MicroTerminalView!
 
-    init(theme: MicroTheme, filePaths: [String]) {
+    /// The IPC channel for this window's micro instance.
+    var ipc: MicroIPC { terminalView.ipc }
+
+    init(theme: MicroTheme, filePaths: [String], workingDirectory: String?) {
         self.theme = theme
+        self.workingDirectory = workingDirectory ?? NSHomeDirectory()
 
         let window = MacMicroWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -24,20 +29,22 @@ class MicroWindowController: NSWindowController, NSWindowDelegate, MicroTerminal
         window.backgroundColor = theme.defaultBg
         window.appearance = theme.appearance
         window.center()
-        window.setFrameAutosaveName("MacMicroWindow")
         window.minSize = NSSize(width: 400, height: 300)
-        window.title = "MacMicro"
+        window.title = self.workingDirectory == NSHomeDirectory()
+            ? "MacMicro"
+            : "\(URL(fileURLWithPath: self.workingDirectory).lastPathComponent) — MacMicro"
 
         super.init(window: window)
         window.delegate = self
 
-        let tv = MicroTerminalView(filePaths: filePaths, theme: theme)
+        window.ipc = nil // will be set after terminal view is created
+
+        let tv = MicroTerminalView(filePaths: filePaths, workingDirectory: workingDirectory, theme: theme)
         tv.delegate = self
         tv.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = tv
+        window.ipc = tv.ipc
         self.terminalView = tv
-
-        // All shortcuts routed through MicroIPC plugin
     }
 
     @available(*, unavailable)
@@ -47,17 +54,14 @@ class MicroWindowController: NSWindowController, NSWindowDelegate, MicroTerminal
 
     // MARK: - Public
 
-    /// Open a file in a new micro tab within the running instance.
     func openFile(_ path: String) {
         terminalView.openFileInTab(path)
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// Change a setting in the running micro instance.
     func setSetting(key: String, value: String) {
         terminalView.setSetting(key: key, value: value)
 
-        // Update window styling when colorscheme changes
         if key == "colorscheme" {
             let newTheme = MicroTheme.load(colorscheme: value)
             window?.backgroundColor = newTheme.defaultBg
@@ -73,8 +77,6 @@ class MicroWindowController: NSWindowController, NSWindowDelegate, MicroTerminal
         terminalView.applyFont(font)
     }
 
-    /// Send Ctrl-Q directly via PTY.
-    /// Micro handles it natively: closes current buffer, prompts if unsaved.
     func sendCtrlQ() {
         guard terminalView.isProcessRunning else { return }
         terminalView.terminalView.process.send(data: [0x11][...])

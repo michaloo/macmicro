@@ -11,9 +11,15 @@ local cmdFile = ""
 function init()
     local home = os.Getenv("HOME")
     local appSupport = filepath.Join(home, "Library", "Application Support", "MacMicro")
-    cmdFile = filepath.Join(appSupport, "commands.pipe")
+    local instanceID = os.Getenv("MACMICRO_INSTANCE_ID")
 
-    micro.Log("macmicro: init, starting watcher")
+    if instanceID == "" then
+        micro.Log("macmicro: no MACMICRO_INSTANCE_ID set, plugin disabled")
+        return
+    end
+
+    cmdFile = filepath.Join(appSupport, "commands-" .. instanceID .. ".pipe")
+    micro.Log("macmicro: init, instance=" .. instanceID)
 
     local watchCmd = string.format(
         'while true; do if [ -f "%s" ]; then cat "%s"; rm -f "%s"; fi; sleep 0.15; done',

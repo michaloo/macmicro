@@ -3,38 +3,54 @@ import AppKit
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
 
-    private var windowController: MicroWindowController?
+    private var windowControllers: [MicroWindowController] = []
     private var preferencesWindow: PreferencesWindow?
     private lazy var theme: MicroTheme = MicroTheme.load()
-
-    // Files received before the window is ready (e.g. during launch via Apple Events)
     private var pendingFiles: [String] = []
+
+    /// The currently focused window controller.
+    private var activeWindowController: MicroWindowController? {
+        windowControllers.first { $0.window?.isKeyWindow == true } ?? windowControllers.first
+    }
 
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        MicroIPC.shared.clearStaleCommands()
+        MicroIPC.cleanupAll()
         setupMenuBar()
 
-        if windowController == nil {
+        if windowControllers.isEmpty {
             let files = pendingFiles.isEmpty ? [] : pendingFiles
             pendingFiles = []
-            createWindow(filePaths: files)
+            createWindow(filePaths: files, workingDirectory: nil)
         }
     }
 
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let wc = windowController else { return .terminateNow }
+    private var quitQueue: [MicroWindowController] = []
 
-        // QuitAll closes all buffers (prompts for each unsaved one)
-        MicroIPC.shared.send("action QuitAll")
-        wc.onProcessExited = { [weak self] in
-            // Clean up the pipe file so no stale commands persist
-            MicroIPC.shared.clearStaleCommands()
-            self?.windowController = nil
-            NSApp.reply(toApplicationShouldTerminate: true)
-        }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let running = windowControllers.filter { $0.window != nil }
+        guard !running.isEmpty else { return .terminateNow }
+
+        quitQueue = running
+        quitNextWindow()
         return .terminateLater
+    }
+
+    /// Close windows one at a time to avoid micro instances racing on shared config files.
+    private func quitNextWindow() {
+        guard let wc = quitQueue.first else {
+            windowControllers.removeAll()
+            NSApp.reply(toApplicationShouldTerminate: true)
+            return
+        }
+
+        wc.ipc.send("action QuitAll")
+        wc.onProcessExited = { [weak self] in
+            wc.ipc.clearStaleCommands()
+            self?.quitQueue.removeFirst()
+            self?.quitNextWindow()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -45,34 +61,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    // MARK: - File Opening (Finder, Open With, Dock drag-and-drop)
+    // MARK: - File Opening
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        // Filter out directories — micro can't open them as files
         let paths = urls.map(\.path).filter { path in
             var isDir: ObjCBool = false
             return !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) || !isDir.boolValue
         }
         guard !paths.isEmpty else { return }
 
-        if let wc = windowController {
+        if windowControllers.isEmpty {
+            pendingFiles.append(contentsOf: paths)
+            return
+        }
+
+        // Open files in the focused window
+        if let wc = activeWindowController {
             for path in paths {
                 wc.openFile(path)
             }
-        } else {
-            pendingFiles.append(contentsOf: paths)
         }
     }
 
     // MARK: - Window Management
 
-    private func createWindow(filePaths: [String]) {
-        let wc = MicroWindowController(theme: theme, filePaths: filePaths)
-        wc.onClose = { [weak self] _ in
-            self?.windowController = nil
+    private func createWindow(filePaths: [String], workingDirectory: String?) {
+        let wc = MicroWindowController(theme: theme, filePaths: filePaths, workingDirectory: workingDirectory)
+        wc.onClose = { [weak self] controller in
+            self?.windowControllers.removeAll { $0 === controller }
         }
         wc.showWindow(nil)
-        windowController = wc
+        windowControllers.append(wc)
     }
 
     // MARK: - Menu Bar
@@ -94,6 +113,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // File menu
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n")
+        fileMenu.addItem(withTitle: "New Tab", action: #selector(newTab(_:)), keyEquivalent: "t")
         fileMenu.addItem(withTitle: "Open...", action: #selector(openDocument(_:)), keyEquivalent: "o")
         fileMenu.addItem(withTitle: "Save", action: #selector(microAction(_:)), keyEquivalent: "s").tag = 1
         fileMenu.addItem(.separator())
@@ -164,53 +185,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu Actions
 
+    @objc func newWindow(_ sender: Any?) {
+        createWindow(filePaths: [], workingDirectory: nil)
+    }
+
+    @objc func newTab(_ sender: Any?) {
+        activeWindowController?.ipc.send("action AddTab")
+    }
+
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = true
+        panel.canChooseDirectories = false
         panel.canChooseFiles = true
 
         guard panel.runModal() == .OK else { return }
 
-        if let wc = windowController {
+        if let wc = activeWindowController {
             for url in panel.urls {
                 wc.openFile(url.path)
             }
         } else {
-            createWindow(filePaths: panel.urls.map(\.path))
+            createWindow(filePaths: panel.urls.map(\.path), workingDirectory: nil)
         }
     }
 
     @objc func closeWindow(_ sender: Any?) {
-        windowController?.sendCtrlQ()
-    }
-
-    @objc func showPreferences(_ sender: Any?) {
-        if preferencesWindow == nil {
-            preferencesWindow = PreferencesWindow()
-        }
-        preferencesWindow?.onSettingChanged = { [weak self] key, value in
-            self?.windowController?.setSetting(key: key, value: value)
-        }
-        preferencesWindow?.onFontChanged = { [weak self] font in
-            self?.windowController?.applyFont(font)
-        }
-        preferencesWindow?.showWindow(nil)
-        preferencesWindow?.window?.makeKeyAndOrderFront(nil)
+        activeWindowController?.sendCtrlQ()
     }
 
     @objc func fontBigger(_ sender: Any?) {
-        windowController?.changeFontSize(delta: 1)
+        activeWindowController?.changeFontSize(delta: 1)
     }
 
     @objc func fontSmaller(_ sender: Any?) {
-        windowController?.changeFontSize(delta: -1)
+        activeWindowController?.changeFontSize(delta: -1)
     }
 
     @objc func fontReset(_ sender: Any?) {
         let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
         FontSettings.save(name: font.fontName, size: 14)
-        windowController?.applyFont(font)
+        for wc in windowControllers { wc.applyFont(font) }
     }
 
     @objc func microAction(_ sender: NSMenuItem) {
@@ -220,16 +235,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             8: "DuplicateLine", 9: "Find", 10: "CommandMode",
         ]
         if let action = actions[sender.tag] {
-            MicroIPC.shared.send("action \(action)")
+            activeWindowController?.ipc.send("action \(action)")
         }
     }
 
+    @objc func showPreferences(_ sender: Any?) {
+        if preferencesWindow == nil {
+            preferencesWindow = PreferencesWindow()
+        }
+        preferencesWindow?.onSettingChanged = { [weak self] key, value in
+            // Broadcast settings to ALL instances
+            self?.windowControllers.forEach { $0.setSetting(key: key, value: value) }
+        }
+        preferencesWindow?.onFontChanged = { [weak self] font in
+            self?.windowControllers.forEach { $0.applyFont(font) }
+        }
+        preferencesWindow?.showWindow(nil)
+        preferencesWindow?.window?.makeKeyAndOrderFront(nil)
+    }
+
     @objc func openMicroHelp(_ sender: Any?) {
-        MicroIPC.shared.send("action ToggleHelp")
+        activeWindowController?.ipc.send("action ToggleHelp")
     }
 
     @objc func openHelpTopic(_ sender: NSMenuItem) {
         guard let topic = sender.representedObject as? String else { return }
-        MicroIPC.shared.send("help \(topic)")
+        activeWindowController?.ipc.send("help \(topic)")
     }
 }

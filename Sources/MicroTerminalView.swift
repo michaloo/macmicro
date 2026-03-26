@@ -8,10 +8,14 @@ import SwiftTerm
 class MicroTerminalView: NSView {
 
     let terminalView: LocalProcessTerminalView
+    let ipc: MicroIPC
+    let workingDirectory: String
     weak var delegate: MicroTerminalViewDelegate?
     private(set) var isProcessRunning: Bool = true
 
-    init(filePaths: [String], theme: MicroTheme) {
+    init(filePaths: [String], workingDirectory: String?, theme: MicroTheme) {
+        self.ipc = MicroIPC()
+        self.workingDirectory = workingDirectory ?? NSHomeDirectory()
         terminalView = LocalProcessTerminalView(frame: .zero)
         super.init(frame: .zero)
 
@@ -30,15 +34,14 @@ class MicroTerminalView: NSView {
         ])
 
         terminalView.font = FontSettings.loadFont()
-        // GPU-accelerated rendering
         try? terminalView.setUseMetal(true)
 
         let handler = ProcessExitHandler(owner: self)
         terminalView.processDelegate = handler
         self.exitHandler = handler
 
-        let resolved = Self.resolveInitialPaths(filePaths)
-        startMicro(args: resolved.args, workingDirectory: resolved.cwd)
+        let files = Self.filterFiles(filePaths)
+        startMicro(args: files, workingDirectory: self.workingDirectory)
     }
 
     @available(*, unavailable)
@@ -63,28 +66,26 @@ class MicroTerminalView: NSView {
         terminalView.font = font
     }
 
-    /// Open a file in a new micro tab via the plugin IPC.
     func openFileInTab(_ filePath: String) {
-        MicroIPC.shared.send("open \(filePath)")
+        ipc.send("open \(filePath)")
     }
 
-    /// Change a setting in the running micro instance via the plugin IPC.
     func setSetting(key: String, value: String) {
-        MicroIPC.shared.send("set \(key) \(value)")
+        ipc.send("set \(key) \(value)")
     }
 
     fileprivate func handleProcessExit() {
         isProcessRunning = false
+        ipc.clearStaleCommands()
         delegate?.microTerminalViewProcessExited(self)
     }
 
     // MARK: - Process Management
 
-    private func startMicro(args: [String], workingDirectory: String?) {
+    private func startMicro(args: [String], workingDirectory: String) {
         let microPath = findMicroBinary()
         let configDir = MicroConfig.configDir
 
-        // Ensure config directory and default settings exist
         MicroConfig.ensureDefaults()
 
         let fullArgs = ["-config-dir", configDir] + args
@@ -92,6 +93,7 @@ class MicroTerminalView: NSView {
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         env["MICRO_TRUECOLOR"] = "1"
+        env["MACMICRO_INSTANCE_ID"] = ipc.instanceID
 
         let envPairs = env.map { "\($0.key)=\($0.value)" }
 
@@ -104,37 +106,21 @@ class MicroTerminalView: NSView {
         )
     }
 
-    /// Always use HOME as CWD. Files are passed as absolute paths.
-    private static func resolveInitialPaths(_ paths: [String]) -> (args: [String], cwd: String?) {
-        // Filter out directories — they don't make sense as micro file args
-        let files = paths.filter { path in
+    private static func filterFiles(_ paths: [String]) -> [String] {
+        paths.filter { path in
             var isDir: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
             return !exists || !isDir.boolValue
-        }
-
-        // Use absolute paths so they work regardless of CWD
-        let args = files.map { URL(fileURLWithPath: $0).path }
-        return (args: args, cwd: NSHomeDirectory())
+        }.map { URL(fileURLWithPath: $0).path }
     }
 
     private func findMicroBinary() -> String {
         if let bundledPath = Bundle.main.path(forResource: "micro", ofType: nil) {
             return bundledPath
         }
-
-        let searchPaths = [
-            "/opt/homebrew/bin/micro",
-            "/usr/local/bin/micro",
-            "/usr/bin/micro",
-        ]
-
-        for path in searchPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
+        for path in ["/opt/homebrew/bin/micro", "/usr/local/bin/micro", "/usr/bin/micro"] {
+            if FileManager.default.isExecutableFile(atPath: path) { return path }
         }
-
         return "/opt/homebrew/bin/micro"
     }
 }

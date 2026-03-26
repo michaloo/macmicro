@@ -2,6 +2,9 @@ import AppKit
 
 class MacMicroWindow: NSWindow {
 
+    /// IPC for this window's micro instance. Set by the window controller.
+    var ipc: MicroIPC?
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, handleShortcut(event) {
             return
@@ -10,21 +13,22 @@ class MacMicroWindow: NSWindow {
     }
 
     private func handleShortcut(_ event: NSEvent) -> Bool {
+        guard let ipc = ipc else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard let chars = event.charactersIgnoringModifiers else { return false }
 
-        // Cmd+Shift+]/[ — tab navigation (terminal eats these before menu)
+        // Cmd+Shift+]/[ — tab navigation
         if flags == [.command, .shift] {
             switch chars {
-            case "]", "}": MicroIPC.shared.send("action NextTab"); return true
-            case "[", "{": MicroIPC.shared.send("action PreviousTab"); return true
+            case "]", "}": ipc.send("action NextTab"); return true
+            case "[", "{": ipc.send("action PreviousTab"); return true
             default: break
             }
         }
 
-        // Cmd+1-9 — tab switch (terminal eats these before menu)
+        // Cmd+1-9 — tab switch
         if flags == .command, let digit = chars.first, digit >= "1", digit <= "9" {
-            MicroIPC.shared.send("tabswitch \(digit)")
+            ipc.send("tabswitch \(digit)")
             return true
         }
 
