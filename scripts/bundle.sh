@@ -5,12 +5,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="$PROJECT_DIR/.build/debug"
+CONFIG="${1:-debug}"
+BUILD_DIR="$PROJECT_DIR/.build/$CONFIG"
 APP_DIR="$PROJECT_DIR/build/MacMicro.app"
 
-echo "Building MacMicro..."
+echo "Building MacMicro ($CONFIG)..."
 cd "$PROJECT_DIR"
-swift build
+swift build -c "$CONFIG"
 
 echo "Creating app bundle..."
 rm -rf "$APP_DIR"

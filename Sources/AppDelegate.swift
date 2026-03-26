@@ -120,6 +120,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        // View menu
+        let viewMenuItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(withTitle: "Bigger", action: #selector(fontBigger(_:)), keyEquivalent: "+")
+        viewMenu.addItem(withTitle: "Smaller", action: #selector(fontSmaller(_:)), keyEquivalent: "-")
+        viewMenu.addItem(withTitle: "Reset Font Size", action: #selector(fontReset(_:)), keyEquivalent: "0")
+        viewMenuItem.submenu = viewMenu
+        mainMenu.addItem(viewMenuItem)
+
         // Window menu
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
@@ -183,8 +192,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         preferencesWindow?.onSettingChanged = { [weak self] key, value in
             self?.windowController?.setSetting(key: key, value: value)
         }
+        preferencesWindow?.onFontChanged = { [weak self] font in
+            self?.windowController?.applyFont(font)
+        }
         preferencesWindow?.showWindow(nil)
         preferencesWindow?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func fontBigger(_ sender: Any?) {
+        windowController?.changeFontSize(delta: 1)
+    }
+
+    @objc func fontSmaller(_ sender: Any?) {
+        windowController?.changeFontSize(delta: -1)
+    }
+
+    @objc func fontReset(_ sender: Any?) {
+        let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        FontSettings.save(name: font.fontName, size: 14)
+        windowController?.applyFont(font)
     }
 
     @objc func microAction(_ sender: NSMenuItem) {

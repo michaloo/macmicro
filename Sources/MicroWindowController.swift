@@ -65,6 +65,14 @@ class MicroWindowController: NSWindowController, NSWindowDelegate, MicroTerminal
         }
     }
 
+    func changeFontSize(delta: CGFloat) {
+        terminalView.changeFontSize(delta: delta)
+    }
+
+    func applyFont(_ font: NSFont) {
+        terminalView.applyFont(font)
+    }
+
     /// Send Ctrl-Q directly via PTY.
     /// Micro handles it natively: closes current buffer, prompts if unsaved.
     func sendCtrlQ() {

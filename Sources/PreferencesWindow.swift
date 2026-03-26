@@ -3,6 +3,7 @@ import AppKit
 class PreferencesWindow: NSWindowController, NSSearchFieldDelegate {
 
     var onSettingChanged: ((String, String) -> Void)?
+    var onFontChanged: ((NSFont) -> Void)?
 
     private var allOptions: [MicroOption] = []
     private var filteredOptions: [MicroOption] = []
@@ -149,6 +150,37 @@ class PreferencesWindow: NSWindowController, NSSearchFieldDelegate {
     private func setupUI() {
         guard let contentView = window?.contentView else { return }
 
+        // -- Terminal section --
+        let termHeader = NSTextField(labelWithString: "MacMicro Settings")
+        termHeader.translatesAutoresizingMaskIntoConstraints = false
+        termHeader.font = .boldSystemFont(ofSize: 13)
+        contentView.addSubview(termHeader)
+
+        let fontLabel = NSTextField(labelWithString: "Font:")
+        fontLabel.translatesAutoresizingMaskIntoConstraints = false
+        fontLabel.font = .systemFont(ofSize: 12)
+        fontLabel.alignment = .right
+        contentView.addSubview(fontLabel)
+
+        let fontButton = NSButton(title: "", target: self, action: #selector(showFontPicker(_:)))
+        fontButton.translatesAutoresizingMaskIntoConstraints = false
+        fontButton.bezelStyle = .rounded
+        fontButton.font = .systemFont(ofSize: 12)
+        contentView.addSubview(fontButton)
+        self.fontButton = fontButton
+        updateFontButtonTitle()
+
+        // -- Micro Editor section --
+        let sep1 = NSBox()
+        sep1.translatesAutoresizingMaskIntoConstraints = false
+        sep1.boxType = .separator
+        contentView.addSubview(sep1)
+
+        let microHeader = NSTextField(labelWithString: "Micro Settings")
+        microHeader.translatesAutoresizingMaskIntoConstraints = false
+        microHeader.font = .boldSystemFont(ofSize: 13)
+        contentView.addSubview(microHeader)
+
         searchField = NSSearchField(frame: .zero)
         searchField.translatesAutoresizingMaskIntoConstraints = false
         searchField.placeholderString = "Filter settings…"
@@ -162,13 +194,34 @@ class PreferencesWindow: NSWindowController, NSSearchFieldDelegate {
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
 
-        containerView = NSView()
+        containerView = FlippedView()
         containerView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = containerView
         contentView.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            // Terminal section
+            termHeader.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
+            termHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+
+            fontLabel.topAnchor.constraint(equalTo: termHeader.bottomAnchor, constant: 10),
+            fontLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            fontLabel.widthAnchor.constraint(equalToConstant: 60),
+
+            fontButton.centerYAnchor.constraint(equalTo: fontLabel.centerYAnchor),
+            fontButton.leadingAnchor.constraint(equalTo: fontLabel.trailingAnchor, constant: 8),
+            fontButton.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16),
+
+            // Separator
+            sep1.topAnchor.constraint(equalTo: fontLabel.bottomAnchor, constant: 12),
+            sep1.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            sep1.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+
+            // Micro Editor section
+            microHeader.topAnchor.constraint(equalTo: sep1.bottomAnchor, constant: 10),
+            microHeader.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+
+            searchField.topAnchor.constraint(equalTo: microHeader.bottomAnchor, constant: 8),
             searchField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             searchField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
 
@@ -219,7 +272,7 @@ class PreferencesWindow: NSWindowController, NSSearchFieldDelegate {
         let totalHeight = CGFloat(filteredOptions.count) * (rowHeight + spacing) + padding * 2
         containerView.frame = NSRect(x: 0, y: 0, width: width, height: totalHeight)
 
-        var y = totalHeight - padding - rowHeight
+        var y = padding
 
         for option in filteredOptions {
             let label = NSTextField(labelWithString: labels[option.key] ?? option.key)
@@ -263,8 +316,31 @@ class PreferencesWindow: NSWindowController, NSSearchFieldDelegate {
                 controls[option.key] = tf
             }
 
-            y -= rowHeight + spacing
+            y += rowHeight + spacing
         }
+    }
+
+    private var fontButton: NSButton!
+
+    private func updateFontButtonTitle() {
+        let font = FontSettings.loadFont()
+        fontButton?.title = "\(font.displayName ?? font.fontName) — \(Int(font.pointSize))pt"
+    }
+
+    @objc private func showFontPicker(_ sender: Any?) {
+        let fontManager = NSFontManager.shared
+        fontManager.target = self
+        fontManager.action = #selector(fontPicked(_:))
+        fontManager.setSelectedFont(FontSettings.loadFont(), isMultiple: false)
+        fontManager.orderFrontFontPanel(self)
+    }
+
+    @objc private func fontPicked(_ sender: NSFontManager) {
+        let current = FontSettings.loadFont()
+        let newFont = sender.convert(current)
+        FontSettings.save(name: newFont.fontName, size: newFont.pointSize)
+        updateFontButtonTitle()
+        onFontChanged?(newFont)
     }
 
     // MARK: - Actions
@@ -293,4 +369,8 @@ class PreferencesWindow: NSWindowController, NSSearchFieldDelegate {
             filterChanged(nil)
         }
     }
+}
+
+private class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }

@@ -29,7 +29,9 @@ class MicroTerminalView: NSView {
             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -hPadding),
         ])
 
-        terminalView.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        terminalView.font = FontSettings.loadFont()
+        // GPU-accelerated rendering
+        try? terminalView.setUseMetal(true)
 
         let handler = ProcessExitHandler(owner: self)
         terminalView.processDelegate = handler
@@ -47,6 +49,19 @@ class MicroTerminalView: NSView {
     private var exitHandler: ProcessExitHandler?
 
     // MARK: - Commands
+
+    func changeFontSize(delta: CGFloat) {
+        let current = terminalView.font
+        let newSize = max(8, min(72, current.pointSize + delta))
+        let newFont = NSFont(descriptor: current.fontDescriptor, size: newSize)
+            ?? NSFont.monospacedSystemFont(ofSize: newSize, weight: .regular)
+        terminalView.font = newFont
+        FontSettings.save(name: current.fontName, size: newSize)
+    }
+
+    func applyFont(_ font: NSFont) {
+        terminalView.font = font
+    }
 
     /// Open a file in a new micro tab via the plugin IPC.
     func openFileInTab(_ filePath: String) {
