@@ -34,7 +34,13 @@ class MicroTerminalView: NSView {
         ])
 
         terminalView.font = FontSettings.loadFont()
-        try? terminalView.setUseMetal(true)
+        // Metal rendering disabled: SwiftTerm's Metal path uses CoreText's native
+        // font advance for glyph positioning instead of the pixel-snapped cell width,
+        // causing cumulative drift over long runs. This manifests as phantom cells
+        // (e.g. extra space before ')' in markdown links). The non-Metal CoreText path
+        // grid-aligns each glyph explicitly and doesn't have this issue.
+        // See: MetalTerminalRenderer.swift buildRowDrawData() ~line 1153 vs
+        //      AppleTerminalView.swift drawTerminalContents() ~line 1383
 
         let handler = ProcessExitHandler(owner: self)
         terminalView.processDelegate = handler
