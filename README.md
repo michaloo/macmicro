@@ -15,7 +15,7 @@ I was looking for a new, simpler replacement for Sublime Text. Two particular fe
 - command palette (extendable)
 - multicursor
 
-I knew micro has those features, but for a long time I didn't consider it for my MacOS workstation as the editor should be a standalone app rather than many of terminal commands.
+I knew micro has those features, but for a long time I didn't consider it for my MacOS workstation. I work a lot in terminal, but I wanted my main editor to be well integrated with other applications and finder.
 
 With a little help of LLM-based coding agent I was able to prototype this wrapper.
 
