@@ -119,6 +119,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: "About MacMicro", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Settings…", action: #selector(showPreferences(_:)), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Set as Default Editor…", action: #selector(setAsDefaultEditor(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit MacMicro", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
@@ -240,6 +241,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
         FontSettings.save(name: font.fontName, size: 14)
         for wc in windowControllers { wc.applyFont(font) }
+    }
+
+    @objc func setAsDefaultEditor(_ sender: Any?) {
+        let bundleID = "com.macmicro.editor" as CFString
+        let utis: [String] = [
+            "public.plain-text",
+            "public.utf8-plain-text",
+            "public.source-code",
+            "public.shell-script",
+            "public.script",
+            "public.python-script",
+            "public.ruby-script",
+            "public.perl-script",
+            "public.swift-source",
+            "public.c-source",
+            "public.c-header",
+            "public.objective-c-source",
+            "public.c-plus-plus-source",
+            "com.netscape.javascript-source",
+            "public.json",
+            "public.xml",
+            "public.html",
+            "public.css",
+            "public.yaml",
+            "net.daringfireball.markdown",
+        ]
+
+        let alert = NSAlert()
+        alert.messageText = "Set MacMicro as Default Editor?"
+        alert.informativeText = "This will make MacMicro the default app for text and source code files."
+        alert.addButton(withTitle: "Set Default")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        for uti in utis {
+            LSSetDefaultRoleHandlerForContentType(uti as CFString, .editor, bundleID)
+        }
     }
 
     @objc func microAction(_ sender: NSMenuItem) {

@@ -65,6 +65,7 @@
                 <string>public.html</string>
                 <string>public.css</string>
                 <string>public.yaml</string>
+                <string>net.daringfireball.markdown</string>
             </array>
         </dict>
     </array>
