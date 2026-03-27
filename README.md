@@ -3,7 +3,7 @@
 A native macOS app wrapping the [micro](https://micro-editor.github.io/) terminal editor.
 
 <p align="center">
-  <img src="screenshot.png" alt="macmicro screenshot">
+  <img src="screenshot.png" alt="macmicro screenshot" width="300px">
 </p>
 
 Note: I shamelessly used official Micro logo just for illustrative purposes, may need different going forward.
